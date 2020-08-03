@@ -1,0 +1,30 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [{
+            "name": "Python: Current File, ontoserver imi",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--endpoint=https://ontoserver.imi.uni-luebeck.de/fhir/",
+                "--out-dir=\"./output/imi/\""
+            ]
+        },
+        {
+            "name": "Python: Current File, open server",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--endpoint=https://r4.ontoserver.csiro.au/fhir/",
+                "--out-dir=\"./output/csiro/\"",
+                "--resource-types=CodeSystem"
+            ]
+        }
+    ]
+}
