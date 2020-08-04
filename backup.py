@@ -258,5 +258,5 @@ def download_resource_to_file(resource_type: str, r: BundleResponse, out_dir: st
 if __name__ == "__main__":
     args = parse_args()
     today = date.today().isoformat()
-    #download_all_resource_types(args, today)
+    download_all_resource_types(args, today)
     remove_old_directories(args, today)
