@@ -3,8 +3,13 @@ import argparse
 import json
 from typing import List, Dict, Any
 from dataclasses import dataclass
-from datetime import date
-from os import path, makedirs
+from datetime import date, timedelta
+from os import path, makedirs, listdir, walk
+import unicodedata
+import re
+import multiprocessing as mp
+import timeit
+import shutil
 
 
 def parse_args(print_args: bool = True) -> argparse.Namespace:
@@ -26,11 +31,12 @@ def parse_args(print_args: bool = True) -> argparse.Namespace:
                         "-e",
                         default=default_url,
                         type=str,
+                        dest="endpoint",
                         help="The FHIR endpoint of the server (Default: '%(default)s')")
     parser.add_argument("--resource-types",
                         "-r",
                         nargs="+",
-                        #default=" ".join(default_resource_types),
+                        # default=" ".join(default_resource_types),
                         default=default_resource_types,
                         type=str,
                         dest='resource_types',
@@ -44,11 +50,21 @@ def parse_args(print_args: bool = True) -> argparse.Namespace:
                         help="destination directory (Default %(default)s)",
                         dest="out_dir",
                         type=str)
+    parser.add_argument("--delete-days", "-d",
+                        default=0,
+                        type=int,
+                        dest='delete_days',
+                        help="remove folders from at least (>=) these many days ago (Default %(default)s, for no removal)")
+    parser.add_argument("--parallel", "-l",
+                        default=1,
+                        type=int,
+                        help="number of parallel GETs to carry out (Default %(default)s for no parallel execution)")
 
     parsed_args = parser.parse_args()
 
     parsed_args.endpoint = parsed_args.endpoint.strip("/")
-    #parsed_args.resource_types = parsed_args.resource_types.split(" ")
+    parsed_args.parallel = max(parsed_args.parallel, 1)
+    parsed_args.delete_days = max(parsed_args.delete_days, 0)
 
     if print_args:
         for arg in vars(parsed_args):
@@ -168,47 +184,79 @@ def download_resource(resource_type: str, r: BundleResponse, out_dir: str, today
     rx = perform_request_as_json(r.url)
 
     target_filename = f"{resource_type}-{r.resource_id}_{r.title}_{today}.json"
-    target_abspath = path.join(out_dir, target_filename)
+    target_abspath = path.join(out_dir, slugify(target_filename))
     with open(target_abspath, "w") as fs:
         json.dump(rx, fs, indent=2)
     return target_abspath
 
 
-def slugify(value):
+def slugify(value, allow_unicode=False):
     """
-    Normalizes string, converts to lowercase, removes non-alpha characters,
-    and converts spaces to hyphens.
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, or hyphens. Convert to lowercase. Also strip leading and
+    trailing whitespace, dashes, and underscores.
     via https://stackoverflow.com/a/295466
-
     """
-    import unicodedata
-    value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore')
-    value = unicode(re.sub('[^\w\s-]', '', value).strip().lower())
-    value = unicode(re.sub('[-\s]+', '-', value))
-    return value
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode(
+            'ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value.lower())
+    return re.sub(r'[-\s]+', '-', value).strip('-_')
 
 
-def download_all_resource_types(args: argparse.Namespace):
+def remove_old_directories(args: argparse.Namespace, today: str):
+    print("############")
+    print("  REMOVING")
+    if args.delete_days <= 0:
+        print("No directories were removed")
+        return
+    print(f"Removing from {args.out_dir}, >= {args.delete_days} ago")
+    foldernames = sorted(listdir(args.out_dir))
+    today_date = date.fromisoformat(today)
+    cutoff_date = today_date - timedelta(days=args.delete_days)
+    print("Cutoff Date:", cutoff_date)
+    to_delete = [
+        fn for fn in foldernames if date.fromisoformat(fn) <= cutoff_date]
+    print("These folders will be deleted:", to_delete)
+    for fn in to_delete:
+        fullpath = path.abspath(path.join(args.out_dir, fn))
+        print(f" - {fn}: {len(listdir(fullpath))} sub-directories")
+        shutil.rmtree(fullpath)
+
+
+def download_all_resource_types(args: argparse.Namespace, today: str):
     """main entry point into the app
 
     Args:
         args (argparse.Namespace): the parsed arguments
     """
-    today = date.today().isoformat()
     for resource_type in args.resource_types:
         print("\n\n########\n\n")
         resource_list = get_resource_urls_from_server(
             args.endpoint, resource_type, args.headers)
-        print(f"  got resources: ")
+        print(f"got {len(resource_list)} resources of type {resource_type}")
         out_dir = path.join(path.abspath(args.out_dir), today, resource_type)
         if not(path.isdir(out_dir)):
             makedirs(out_dir)
-        for i, r in enumerate(resource_list):
-            print(
-                f"   - ({i+1}/{len(resource_list)}) {r.url} (canonical {r.canonical_url}) -> ", end="")
-            print(download_resource(resource_type, r, out_dir, today))
+        print(f"downloading with {args.parallel} parallel execution(s)")
+        pool = mp.Pool(args.parallel)
+        results = [pool.apply(download_resource_to_file, args=(
+            resource_type, r, out_dir, today)) for r in resource_list]
+        pool.close()
+
+
+def download_resource_to_file(resource_type: str, r: BundleResponse, out_dir: str, today: str):
+    fn = download_resource(resource_type, r, out_dir, today)
+    print(f"   - {r.url} (canonical {r.canonical_url}) -> {fn}")
+    return fn
 
 
 if __name__ == "__main__":
     args = parse_args()
-    download_all_resource_types(args)
+    today = date.today().isoformat()
+    #download_all_resource_types(args, today)
+    remove_old_directories(args, today)

@@ -11,7 +11,10 @@
             "console": "integratedTerminal",
             "args": [
                 "--endpoint=https://ontoserver.imi.uni-luebeck.de/fhir/",
-                "--out-dir=\"./output/imi/\""
+                "--out-dir=\"./output/imi/\"",
+                "--resource-types=CodeSystem",
+                "--parallel=4",
+                "--delete-days=1"
             ]
         },
         {
@@ -23,7 +26,8 @@
             "args": [
                 "--endpoint=https://r4.ontoserver.csiro.au/fhir/",
                 "--out-dir=\"./output/csiro/\"",
-                "--resource-types=CodeSystem"
+                "--resource-types=CodeSystem",
+                "--parallel=4"
             ]
         }
     ]
