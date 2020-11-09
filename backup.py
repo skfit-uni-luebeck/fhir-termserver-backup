@@ -3,13 +3,14 @@ import argparse
 import json
 from typing import List, Dict, Any
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from os import path, makedirs, listdir, walk
 import unicodedata
 import re
 import multiprocessing as mp
 import timeit
 import shutil
+import sys
 
 
 def parse_args(print_args: bool = True) -> argparse.Namespace:
@@ -183,10 +184,11 @@ def download_resource(resource_type: str, r: BundleResponse, out_dir: str, today
     """
     rx = perform_request_as_json(r.url)
 
-    target_filename = f"{resource_type}-{r.resource_id}_{r.title}_{today}.json"
-    target_abspath = path.join(out_dir, slugify(target_filename))
+    target_filename = f"{resource_type}-{r.resource_id}_{r.title}_{today}"
+    target_abspath = path.join(out_dir, slugify(target_filename)) + ".json"
     with open(target_abspath, "w") as fs:
         json.dump(rx, fs, indent=2)
+    sys.stdout.flush()
     return target_abspath
 
 
@@ -247,16 +249,22 @@ def download_all_resource_types(args: argparse.Namespace, today: str):
         results = [pool.apply(download_resource_to_file, args=(
             resource_type, r, out_dir, today)) for r in resource_list]
         pool.close()
+        sys.stdout.flush()
 
 
 def download_resource_to_file(resource_type: str, r: BundleResponse, out_dir: str, today: str):
     fn = download_resource(resource_type, r, out_dir, today)
     print(f"   - {r.url} (canonical {r.canonical_url}) -> {fn}")
+    sys.stdout.flush()
     return fn
 
 
 if __name__ == "__main__":
-    args = parse_args()
     today = date.today().isoformat()
+    print("##########################################")
+    print(f"executing at {datetime.now().isoformat()} UTC")
+    print("------------------------------------------")
+    args = parse_args()
     download_all_resource_types(args, today)
     remove_old_directories(args, today)
+    print("##########################################\n\n")
