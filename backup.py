@@ -11,6 +11,8 @@ import multiprocessing as mp
 import timeit
 import shutil
 import sys
+import os
+import stat
 
 
 def parse_args(print_args: bool = True) -> argparse.Namespace:
@@ -226,8 +228,15 @@ def remove_old_directories(args: argparse.Namespace, today: str):
     print("These folders will be deleted:", to_delete)
     for fn in to_delete:
         fullpath = path.abspath(path.join(args.out_dir, fn))
-        print(f" - {fn}: {len(listdir(fullpath))} sub-directories")
-        shutil.rmtree(fullpath)
+        print(f" - {fn}: ", end='')
+        try:
+            print(f"{len(listdir(fullpath))} sub-directories", end='')
+            shutil.rmtree(fullpath)
+            print(" -- deleted")
+        except PermissionError as err:
+            print()
+            permissions = os.stat(fullpath)
+            eprint(f"***Permission Error for '{fullpath}': {permissions}")
 
 
 def download_all_resource_types(args: argparse.Namespace, today: str):
@@ -257,6 +266,10 @@ def download_resource_to_file(resource_type: str, r: BundleResponse, out_dir: st
     print(f"   - {r.url} (canonical {r.canonical_url}) -> {fn}")
     sys.stdout.flush()
     return fn
+
+def eprint(*args, **kwargs):
+    "https://stackoverflow.com/a/14981125/2333678"
+    print(*args, file=sys.stderr, **kwargs)
 
 
 if __name__ == "__main__":
