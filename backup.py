@@ -219,8 +219,8 @@ def slugify(value, allow_unicode=False):
 
 
 def remove_old_directories(args: argparse.Namespace, today: str):
-    print("############")
-    print("  REMOVING")
+    print("\n\n########\n\n")
+    print("REMOVING")
     if args.delete_days <= 0:
         print("No directories were removed")
         return
@@ -289,13 +289,16 @@ def create_tarball(args, today):
     """create a tarball for the downloaded files"""
     if not args.tarball:
         return
+    print("\n\n########\n\n")
     output_path = path.join(path.abspath(args.out_dir), today)
     tar_filename = f"{today}.tar.gz"
     tar_path = path.join(output_path, tar_filename)
+    print(f"creating tarball at {tar_path}")
     filelist = sorted([path.join(output_path, f) for f in listdir(output_path) if f != tar_filename])
     with tarfile.open(tar_path, "w:gz") as tar:
         for f in filelist:
             tar.add(f, arcname=os.path.basename(f))
+            print(f" - added {f} to tarball")
 
 
 if __name__ == "__main__":
