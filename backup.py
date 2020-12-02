@@ -1,19 +1,18 @@
-import requests
 import argparse
 import json
-from typing import List, Dict, Any
-from dataclasses import dataclass
-from datetime import date, timedelta, datetime
-from os import path, makedirs, listdir, walk
-import unicodedata
-import re
 import multiprocessing as mp
-import timeit
+import os
+import re
 import shutil
 import sys
-import os
-import stat
 import tarfile
+import unicodedata
+from dataclasses import dataclass
+from datetime import date, timedelta, datetime
+from os import path, makedirs, listdir
+from typing import List, Dict, Any
+
+import requests
 
 
 def parse_args(print_args: bool = True) -> argparse.Namespace:
@@ -43,9 +42,10 @@ def parse_args(print_args: bool = True) -> argparse.Namespace:
                         default=default_resource_types,
                         type=str,
                         dest='resource_types',
-                        help="the resource types to back-up. Seperate with Space (Default: '%(default)s')")
+                        help="the resource types to back-up. Separate with Space (Default: '%(default)s')")
     parser.add_argument("--header",
-                        help="headers to pass to the HTTP method. Use for authentication if required! If multiple required, repeat argument. (Default: None)",
+                        help="headers to pass to the HTTP method. Use for authentication if required! "
+                             "If multiple required, repeat argument. (Default: None)",
                         dest="headers",
                         action="append")
     parser.add_argument("--out-dir", "-o",
@@ -57,7 +57,8 @@ def parse_args(print_args: bool = True) -> argparse.Namespace:
                         default=0,
                         type=int,
                         dest='delete_days',
-                        help="remove folders from at least (>=) these many days ago (Default %(default)s, for no removal)")
+                        help="remove folders from at least (>=) these many days ago "
+                             "(Default %(default)s, for no removal)")
     parser.add_argument("--tarball", "-t",
                         action='store_true',
                         help='create a tarball from the downloaded file')
@@ -110,8 +111,8 @@ def perform_request_as_json(url: str, headers: List[str] = None) -> Dict[str, An
     return rx.json()
 
 
-def get_resource_urls_from_server(fhir_endpoint: str, resource_type: str, headers: List[str] = None) -> List[
-    BundleResponse]:
+def get_resource_urls_from_server(fhir_endpoint: str, resource_type: str, headers: List[str] = None) \
+        -> List[BundleResponse]:
     """get the urls of all the resources of the given type from the server. Walks through bundles!
 
     Args:
@@ -129,7 +130,7 @@ def get_resource_urls_from_server(fhir_endpoint: str, resource_type: str, header
     while next_link:
         print("Requesting from: ", next_link)
         bundle_json = perform_request_as_json(next_link, headers)
-        bundle_responses += bundlejson_to_bundle_response_list(bundle_json)
+        bundle_responses += bundle_json_to_bundle_response_list(bundle_json)
         next_link = bundle_json_get_next_link(bundle_json)
 
     return bundle_responses
@@ -144,13 +145,13 @@ def bundle_json_get_next_link(bundle_json: Dict[str, Any]) -> str:
     Returns:
         str: the url of the 'next' bundle or None
     """
-    filtered_link = [l for l in bundle_json["link"] if l["relation"] == "next"]
+    filtered_link = [link for link in bundle_json["link"] if link["relation"] == "next"]
     if len(filtered_link) > 0:
         return filtered_link[0]["url"]
     return ""
 
 
-def bundlejson_to_bundle_response_list(bundle_json: Dict[str, Any]) -> List[BundleResponse]:
+def bundle_json_to_bundle_response_list(bundle_json: Dict[str, Any]) -> List[BundleResponse]:
     """parse every entry in the bundle as a BundleResponse
 
     Args:
@@ -178,14 +179,13 @@ def bundlejson_to_bundle_response_list(bundle_json: Dict[str, Any]) -> List[Bund
     return responses
 
 
-def download_resource(resource_type: str, r: BundleResponse, out_dir: str, today: str) -> str:
+def download_resource(resource_type: str, r: BundleResponse, out_dir: str) -> str:
     """download a resource from the fully-qualified url in r to out_dir
 
     Args:
         resource_type (str): the resource type, used in the output filename
         r (BundleResponse): the parsed entry from the search bundle
         out_dir (str): the output directory
-        today (str): the current date (or anything else), used in the output filename. Lifted out to avoid changing filenames around midnight local time.
 
     Returns:
         str: the fully-qualified output path
@@ -218,39 +218,35 @@ def slugify(value, allow_unicode=False):
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
 
-def remove_old_directories(args: argparse.Namespace, today: str):
+def remove_old_directories():
     print("\n\n########\n\n")
     print("REMOVING")
     if args.delete_days <= 0:
         print("No directories were removed")
         return
     print(f"Removing from {args.out_dir}, >= {args.delete_days} ago")
-    foldernames = sorted(listdir(args.out_dir))
+    folder_names = sorted(listdir(args.out_dir))
     today_date = date.fromisoformat(today)
     cutoff_date = today_date - timedelta(days=args.delete_days)
     print("Cutoff Date:", cutoff_date)
     to_delete = [
-        fn for fn in foldernames if date.fromisoformat(fn) <= cutoff_date]
+        fn for fn in folder_names if date.fromisoformat(fn) <= cutoff_date]
     print("These folders will be deleted:", to_delete)
     for fn in to_delete:
-        fullpath = path.abspath(path.join(args.out_dir, fn))
+        full_path = path.abspath(path.join(args.out_dir, fn))
         print(f" - {fn}: ", end='')
         try:
-            print(f"{len(listdir(fullpath))} sub-directories", end='')
-            shutil.rmtree(fullpath)
+            print(f"{len(listdir(full_path))} sub-directories", end='')
+            shutil.rmtree(full_path)
             print(" -- deleted")
-        except PermissionError as err:
+        except PermissionError:
             print()
-            permissions = os.stat(fullpath)
-            eprint(f"***Permission Error for '{fullpath}': {permissions}")
+            permissions = os.stat(full_path)
+            error_print(f"***Permission Error for '{full_path}': {permissions}")
 
 
-def download_all_resource_types(args: argparse.Namespace, today: str):
-    """main entry point into the app
-
-    Args:
-        args (argparse.Namespace): the parsed arguments
-    """
+def download_all_resource_types():
+    """main entry point into the app"""
     for resource_type in args.resource_types:
         print("\n\n########\n\n")
         resource_list = get_resource_urls_from_server(
@@ -264,7 +260,7 @@ def download_all_resource_types(args: argparse.Namespace, today: str):
         print(f"downloading with {args.parallel} parallel execution(s)")
         if args.parallel == 1:
             for r in resource_list:
-                download_resource_to_file(resource_type, r, out_dir, today)
+                download_resource_to_file(resource_type, r, out_dir)
                 sys.stdout.flush()
         else:
             pool = mp.Pool(args.parallel)
@@ -273,19 +269,19 @@ def download_all_resource_types(args: argparse.Namespace, today: str):
         sys.stdout.flush()
 
 
-def download_resource_to_file(resource_type: str, r: BundleResponse, out_dir: str, today: str):
-    fn = download_resource(resource_type, r, out_dir, today)
+def download_resource_to_file(resource_type: str, r: BundleResponse, out_dir: str):
+    fn = download_resource(resource_type, r, out_dir)
     print(f"   - {r.url} (canonical {r.canonical_url}) -> {fn}")
     sys.stdout.flush()
     return fn
 
 
-def eprint(*args, **kwargs):
+def error_print(*the_args, **the_kwargs):
     """https://stackoverflow.com/a/14981125/2333678"""
-    print(*args, file=sys.stderr, **kwargs)
+    print(*the_args, file=sys.stderr, **the_kwargs)
 
 
-def create_tarball(args, today):
+def create_tarball():
     """create a tarball for the downloaded files"""
     if not args.tarball:
         return
@@ -294,10 +290,10 @@ def create_tarball(args, today):
     tar_filename = f"{today}.tar.gz"
     tar_path = path.join(output_path, tar_filename)
     print(f"creating tarball at {tar_path}")
-    filelist = sorted([path.join(output_path, f) for f in listdir(output_path) if f != tar_filename])
+    file_list = sorted([path.join(output_path, f) for f in listdir(output_path) if f != tar_filename])
     with tarfile.open(tar_path, "w:gz") as tar:
-        for f in filelist:
-            tar.add(f, arcname=f"{today}/{os.path.basename(f)})
+        for f in file_list:
+            tar.add(f, arcname=f"{today}/{os.path.basename(f)}")
             print(f" - added {f} to tarball")
 
 
@@ -307,7 +303,7 @@ if __name__ == "__main__":
     print(f"executing at {datetime.now().isoformat()} UTC")
     print("------------------------------------------")
     args = parse_args()
-    download_all_resource_types(args, today)
-    create_tarball(args, today)
-    remove_old_directories(args, today)
+    download_all_resource_types()
+    create_tarball()
+    remove_old_directories()
     print("##########################################\n\n")
