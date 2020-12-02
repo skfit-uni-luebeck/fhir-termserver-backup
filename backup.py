@@ -297,7 +297,7 @@ def create_tarball(args, today):
     filelist = sorted([path.join(output_path, f) for f in listdir(output_path) if f != tar_filename])
     with tarfile.open(tar_path, "w:gz") as tar:
         for f in filelist:
-            tar.add(f, arcname=os.path.basename(f))
+            tar.add(f, arcname=f"{today}/{os.path.basename(f)})
             print(f" - added {f} to tarball")
 
 
