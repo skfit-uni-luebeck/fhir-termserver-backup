@@ -264,7 +264,7 @@ def download_all_resource_types():
                 sys.stdout.flush()
         else:
             pool = mp.Pool(args.parallel)
-            [pool.apply(download_resource_to_file, args=(resource_type, r, out_dir, today)) for r in resource_list]
+            [pool.apply(download_resource_to_file, args=(resource_type, r, out_dir)) for r in resource_list]
             pool.close()
         sys.stdout.flush()
 
