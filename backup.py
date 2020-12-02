@@ -13,6 +13,7 @@ import shutil
 import sys
 import os
 import stat
+import tarfile
 
 
 def parse_args(print_args: bool = True) -> argparse.Namespace:
@@ -39,7 +40,6 @@ def parse_args(print_args: bool = True) -> argparse.Namespace:
     parser.add_argument("--resource-types",
                         "-r",
                         nargs="+",
-                        # default=" ".join(default_resource_types),
                         default=default_resource_types,
                         type=str,
                         dest='resource_types',
@@ -58,6 +58,9 @@ def parse_args(print_args: bool = True) -> argparse.Namespace:
                         type=int,
                         dest='delete_days',
                         help="remove folders from at least (>=) these many days ago (Default %(default)s, for no removal)")
+    parser.add_argument("--tarball", "-t",
+                        action='store_true',
+                        help='create a tarball from the downloaded file')
     parser.add_argument("--parallel", "-l",
                         default=1,
                         type=int,
@@ -103,11 +106,12 @@ def perform_request_as_json(url: str, headers: List[str] = None) -> Dict[str, An
     rx = requests.get(url, headers=headers)
     if rx.status_code != 200:
         raise ValueError(
-            f"HTTP Error {rx.status_code} getting from {request_url}", rx)
+            f"HTTP Error {rx.status_code} getting from {url}", rx)
     return rx.json()
 
 
-def get_resource_urls_from_server(fhir_endpoint: str, resource_type: str, headers: List[str] = None) -> List[BundleResponse]:
+def get_resource_urls_from_server(fhir_endpoint: str, resource_type: str, headers: List[str] = None) -> List[
+    BundleResponse]:
     """get the urls of all the resources of the given type from the server. Walks through bundles!
 
     Args:
@@ -122,7 +126,7 @@ def get_resource_urls_from_server(fhir_endpoint: str, resource_type: str, header
     bundle_responses: List[BundleResponse] = []
     next_link = request_url
 
-    while next_link != None:
+    while next_link:
         print("Requesting from: ", next_link)
         bundle_json = perform_request_as_json(next_link, headers)
         bundle_responses += bundlejson_to_bundle_response_list(bundle_json)
@@ -141,9 +145,9 @@ def bundle_json_get_next_link(bundle_json: Dict[str, Any]) -> str:
         str: the url of the 'next' bundle or None
     """
     filtered_link = [l for l in bundle_json["link"] if l["relation"] == "next"]
-    if (len(filtered_link) > 0):
+    if len(filtered_link) > 0:
         return filtered_link[0]["url"]
-    return None
+    return ""
 
 
 def bundlejson_to_bundle_response_list(bundle_json: Dict[str, Any]) -> List[BundleResponse]:
@@ -155,6 +159,8 @@ def bundlejson_to_bundle_response_list(bundle_json: Dict[str, Any]) -> List[Bund
     Returns:
         List[BundleResponse]: the parsed entries
     """
+    if 'entry' not in bundle_json.keys():
+        return []
     responses: List[BundleResponse] = []
     for entry in bundle_json['entry']:
         url = entry["fullUrl"]
@@ -250,14 +256,20 @@ def download_all_resource_types(args: argparse.Namespace, today: str):
         resource_list = get_resource_urls_from_server(
             args.endpoint, resource_type, args.headers)
         print(f"got {len(resource_list)} resources of type {resource_type}")
+        if len(resource_list) == 0:
+            continue
         out_dir = path.join(path.abspath(args.out_dir), today, resource_type)
-        if not(path.isdir(out_dir)):
+        if not (path.isdir(out_dir)):
             makedirs(out_dir)
         print(f"downloading with {args.parallel} parallel execution(s)")
-        pool = mp.Pool(args.parallel)
-        results = [pool.apply(download_resource_to_file, args=(
-            resource_type, r, out_dir, today)) for r in resource_list]
-        pool.close()
+        if args.parallel == 1:
+            for r in resource_list:
+                download_resource_to_file(resource_type, r, out_dir, today)
+                sys.stdout.flush()
+        else:
+            pool = mp.Pool(args.parallel)
+            [pool.apply(download_resource_to_file, args=(resource_type, r, out_dir, today)) for r in resource_list]
+            pool.close()
         sys.stdout.flush()
 
 
@@ -267,9 +279,23 @@ def download_resource_to_file(resource_type: str, r: BundleResponse, out_dir: st
     sys.stdout.flush()
     return fn
 
+
 def eprint(*args, **kwargs):
-    "https://stackoverflow.com/a/14981125/2333678"
+    """https://stackoverflow.com/a/14981125/2333678"""
     print(*args, file=sys.stderr, **kwargs)
+
+
+def create_tarball(args, today):
+    """create a tarball for the downloaded files"""
+    if not args.tarball:
+        return
+    output_path = path.join(path.abspath(args.out_dir), today)
+    tar_filename = f"{today}.tar.gz"
+    tar_path = path.join(output_path, tar_filename)
+    filelist = sorted([path.join(output_path, f) for f in listdir(output_path) if f != tar_filename])
+    with tarfile.open(tar_path, "w:gz") as tar:
+        for f in filelist:
+            tar.add(f, arcname=os.path.basename(f))
 
 
 if __name__ == "__main__":
@@ -279,5 +305,6 @@ if __name__ == "__main__":
     print("------------------------------------------")
     args = parse_args()
     download_all_resource_types(args, today)
+    create_tarball(args, today)
     remove_old_directories(args, today)
     print("##########################################\n\n")
