@@ -26,7 +26,7 @@ def parse_args(print_args: bool = True) -> argparse.Namespace:
     """
     default_url = "http://localhost:8080/fhir"
 
-    default_resource_types = ["CodeSystem", "ValueSet", "ConceptMap"]
+    default_resource_types = ["CodeSystem", "ValueSet", "ConceptMap", "StructureDefinition"]
 
     parser = argparse.ArgumentParser(
         "Terminology Server Backup")

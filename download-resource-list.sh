@@ -13,12 +13,14 @@ common_params="url,version,id,name,title,status"
 cs_params="$common_params,valueSet"
 vs_params="$common_params"
 cm_params="$common_params,sourceUri,targetUri,sourceCanonical,targetCanonical"
+sd_params="$common_params,kind,fhirVersion"
 size="1000"
 output_dir="$2"
 
 cs_url="$endpoint/CodeSystem?_elements=$cs_params&_count=$size&_format=json"
 vs_url="$endpoint/ValueSet?_elements=$vs_params&_count=$size&_format=json"
 cm_url="$endpoint/ConceptMap?_elements=$cm_params&_count=$size&_format=json"
+sd_url="$endpoint/StructureDefinition?_elements=$sd_params&_count=$size&_format=json"
 
 today=$(date -I)
 yesterday=$(date -I -d "yesterday")
@@ -26,6 +28,7 @@ yesterday=$(date -I -d "yesterday")
 today_cs="$output_dir/CodeSystem-$today.ndjson"
 today_vs="$output_dir/ValueSet-$today.ndjson"
 today_cm="$output_dir/ConceptMap-$today.ndjson"
+today_sd="$output_dir/StructureDefinition-$today.ndjson"
 
 echo "requesting from $cs_url"
 curl -s $cs_url | jq ".entry[].resource" | jq -sc "sort_by(.url) | .[] | { $cs_params }" > $today_cs
@@ -33,20 +36,26 @@ echo "requesting from $vs_url"
 curl -s $vs_url | jq ".entry[].resource" | jq -sc "sort_by(.url) | .[] | { $vs_params }" > $today_vs
 echo "requesting from $cm_url"
 curl -s $cm_url | jq ".entry[].resource" | jq -sc "sort_by(.url) | .[] | { $cm_params }" > $today_cm
+echo "requesting from $sd_url"
+curl -s $sd_url | jq ".entry[].resource" | jq -sc "sort_by(.url) | .[] | { $sd_params }" > $today_sd
 
 source .venv/bin/activate
 python ./utils/format_ndjson.py --in="$today_cs" --out "$today_cs.html" --title "CodeSystem $today"
 python ./utils/format_ndjson.py --in="$today_vs" --out "$today_vs.html" --title "ValueSet $today"
 python ./utils/format_ndjson.py --in="$today_cm" --out "$today_cm.html" --title "ConceptMap $today"
+python ./utils/format_ndjson.py --in="$today_sd" --out "$today_sd.html" --title "StructureDefinition $today"
 
 yesterday_cs="$output_dir/CodeSystem-$yesterday.ndjson"
 yesterday_vs="$output_dir/ValueSet-$yesterday.ndjson"
 yesterday_cm="$output_dir/ConceptMap-$yesterday.ndjson"
+yesterday_sd="$output_dir/StructureDefinition-$yesterday.ndjson"
 
 diff_cs="$output_dir/Diff-CodeSystem-$yesterday-$today.html"
 diff_vs="$output_dir/Diff-ValueSet-$yesterday-$today.html"
 diff_cm="$output_dir/Diff-ConceptMap-$yesterday-$today.html"
+diff_sd="$output_dir/Diff-StructureDefinition-$yesterday-$today.html"
 
 if [ -f $yesterday_cs ]; then diff -u $yesterday_cs $today_cs | ./utils/diff2html.sh > $diff_cs; fi
 if [ -f $yesterday_vs ]; then diff -u $yesterday_vs $today_vs | ./utils/diff2html.sh > $diff_vs; fi
 if [ -f $yesterday_cm ]; then diff -u $yesterday_cm $today_cm | ./utils/diff2html.sh > $diff_cm; fi
+if [ -f $yesterday_sd ]; then diff -u $yesterday_sd $today_sd | ./utils/diff2html.sh > $diff_sd; fi
