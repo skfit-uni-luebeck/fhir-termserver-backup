@@ -27,8 +27,11 @@ today_cs="$output_dir/CodeSystem-$today.ndjson"
 today_vs="$output_dir/ValueSet-$today.ndjson"
 today_cm="$output_dir/ConceptMap-$today.ndjson"
 
+echo "requesting from $cs_url"
 curl -s $cs_url | jq ".entry[].resource" | jq -sc "sort_by(.url) | .[] | { $cs_params }" > $today_cs
+echo "requesting from $vs_url"
 curl -s $vs_url | jq ".entry[].resource" | jq -sc "sort_by(.url) | .[] | { $vs_params }" > $today_vs
+echo "requesting from $cm_url"
 curl -s $cm_url | jq ".entry[].resource" | jq -sc "sort_by(.url) | .[] | { $cm_params }" > $today_cm
 
 source .venv/bin/activate
